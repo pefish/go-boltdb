@@ -2087,7 +2087,7 @@ func (cmd *CompactCommand) compact(dst, src *bolt.DB) error {
 type walkFunc func(keys [][]byte, k, v []byte, seq uint64) error
 
 // walk walks recursively the bolt database db, calling walkFn for each key it finds.
-func (cmd *CompactCommand) walk(db *bolt.DB, walkFn walkFunc) error {
+func (cmd *CompactCommand) walk(db *bolt.DB, walkFn walkFunc) error {  // 遍历每个bucket下的所有key、value
 	return db.View(func(tx *bolt.Tx) error {
 		return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
 			return cmd.walkBucket(b, nil, name, nil, b.Sequence(), walkFn)

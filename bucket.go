@@ -29,10 +29,10 @@ const DefaultFillPercent = 0.5
 type Bucket struct {
 	*bucket
 	tx       *Tx                // the associated transaction
-	buckets  map[string]*Bucket // subbucket cache
+	buckets  map[string]*Bucket // subbucket cache  缓存bucket中所有的子bucket
 	page     *page              // inline page reference
-	rootNode *node              // materialized node for the root page.
-	nodes    map[pgid]*node     // node cache
+	rootNode *node              // materialized node for the root page.  bucket的根节点
+	nodes    map[pgid]*node     // node cache  存放bucket下所有节点，key是页id
 
 	// Sets the threshold for filling nodes when they split. By default,
 	// the bucket will fill to 50% but it can be useful to increase this
@@ -47,8 +47,8 @@ type Bucket struct {
 // then its root page can be stored inline in the "value", after the bucket
 // header. In the case of inline buckets, the "root" will be 0.
 type bucket struct {
-	root     pgid   // page id of the bucket's root-level page
-	sequence uint64 // monotonically incrementing, used by NextSequence()
+	root     pgid   // page id of the bucket's root-level page  根节点的页id，内联bucket这里就是0
+	sequence uint64 // monotonically incrementing, used by NextSequence()  每个bucket的自增id
 }
 
 // newBucket returns a new bucket associated with a transaction.
@@ -381,7 +381,7 @@ func (b *Bucket) NextSequence() (uint64, error) {
 // If the provided function returns an error then the iteration is stopped and
 // the error is returned to the caller. The provided function must not modify
 // the bucket; this will result in undefined behavior.
-func (b *Bucket) ForEach(fn func(k, v []byte) error) error {
+func (b *Bucket) ForEach(fn func(k, v []byte) error) error {  // 遍历bucket下面所有key、value。根bucket中的value都是子bucket
 	if b.tx.db == nil {
 		return ErrTxClosed
 	}

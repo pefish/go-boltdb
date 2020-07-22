@@ -29,9 +29,9 @@ type pgid uint64
 
 type page struct {
 	id       pgid
-	flags    uint16
-	count    uint16
-	overflow uint32
+	flags    uint16  // 区分不同类型的 page
+	count    uint16  // 表示页中数据的数量
+	overflow uint32  // 表示分配的空间多出了overflow个页的空间
 }
 
 // typ returns a human readable page type string used for debugging.
@@ -54,7 +54,7 @@ func (p *page) meta() *meta {
 }
 
 // leafPageElement retrieves the leaf node by index
-func (p *page) leafPageElement(index uint16) *leafPageElement {
+func (p *page) leafPageElement(index uint16) *leafPageElement {  // 根据叶子结点的index加载出leafPageElement对象
 	return (*leafPageElement)(unsafeIndex(unsafe.Pointer(p), unsafe.Sizeof(*p),
 		leafPageElementSize, int(index)))
 }
@@ -100,10 +100,10 @@ func (s pages) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s pages) Less(i, j int) bool { return s[i].id < s[j].id }
 
 // branchPageElement represents a node on a branch page.
-type branchPageElement struct {
+type branchPageElement struct {  // 非叶子结点中的元素
 	pos   uint32
 	ksize uint32
-	pgid  pgid
+	pgid  pgid  // 指向的子节点的页的id
 }
 
 // key returns a byte slice of the node key.

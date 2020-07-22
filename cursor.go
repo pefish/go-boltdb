@@ -17,7 +17,7 @@ import (
 // after mutating data.
 type Cursor struct {
 	bucket *Bucket
-	stack  []elemRef
+	stack  []elemRef  // 存放从根节点到某元素(元素所在节点可能是叶子也可能不是)的查找路径，elemRef是节点中元素的信息
 }
 
 // Bucket returns the bucket that this cursor was created from.
@@ -31,7 +31,7 @@ func (c *Cursor) Bucket() *Bucket {
 func (c *Cursor) First() (key []byte, value []byte) {
 	_assert(c.bucket.tx.db != nil, "tx closed")
 	c.stack = c.stack[:0]
-	p, n := c.bucket.pageNode(c.bucket.root)
+	p, n := c.bucket.pageNode(c.bucket.root)  // 得到根节点
 	c.stack = append(c.stack, elemRef{page: p, node: n, index: 0})
 	c.first()
 
@@ -163,7 +163,7 @@ func (c *Cursor) seek(seek []byte) (key []byte, value []byte, flags uint32) {
 }
 
 // first moves the cursor to the first leaf element under the last page in the stack.
-func (c *Cursor) first() {
+func (c *Cursor) first() {  // 栈顶元素可能是非叶子结点，这个方法就是从这个非叶子结点继续往下找到底，直到最左边的叶子结点的第一个元素
 	for {
 		// Exit when we hit a leaf page.
 		var ref = &c.stack[len(c.stack)-1]
@@ -173,12 +173,12 @@ func (c *Cursor) first() {
 
 		// Keep adding pages pointing to the first element to the stack.
 		var pgid pgid
-		if ref.node != nil {
-			pgid = ref.node.inodes[ref.index].pgid
+		if ref.node != nil {  // 说明这个元素所处的节点不是内联节点
+			pgid = ref.node.inodes[ref.index].pgid  // 找到非叶子结点指向的下一个页的id
 		} else {
-			pgid = ref.page.branchPageElement(uint16(ref.index)).pgid
+			pgid = ref.page.branchPageElement(uint16(ref.index)).pgid  // 找到子节点的页id
 		}
-		p, n := c.bucket.pageNode(pgid)
+		p, n := c.bucket.pageNode(pgid)  // 得到节点
 		c.stack = append(c.stack, elemRef{page: p, node: n, index: 0})
 	}
 }
@@ -214,9 +214,9 @@ func (c *Cursor) next() (key []byte, value []byte, flags uint32) {
 		// Attempt to move over one element until we're successful.
 		// Move up the stack as we hit the end of each page in our stack.
 		var i int
-		for i = len(c.stack) - 1; i >= 0; i-- {
+		for i = len(c.stack) - 1; i >= 0; i-- {  // 找出下一个遍历的元素
 			elem := &c.stack[i]
-			if elem.index < elem.count()-1 {
+			if elem.index < elem.count()-1 {  // 如果index还没有指向这个节点的最后一个元素，则index往后移一位并结束循环
 				elem.index++
 				break
 			}
@@ -230,8 +230,8 @@ func (c *Cursor) next() (key []byte, value []byte, flags uint32) {
 
 		// Otherwise start from where we left off in the stack and find the
 		// first element of the first leaf page.
-		c.stack = c.stack[:i+1]
-		c.first()
+		c.stack = c.stack[:i+1]  // 这时候栈顶元素就是下一个要遍历的元素
+		c.first()  // 继续往下找，找到叶子结点第一个元素
 
 		// If this is an empty page then restart and move back up the stack.
 		// https://github.com/boltdb/bolt/issues/450
@@ -331,7 +331,7 @@ func (c *Cursor) nsearch(key []byte) {
 }
 
 // keyValue returns the key and value of the current leaf element.
-func (c *Cursor) keyValue() ([]byte, []byte, uint32) {
+func (c *Cursor) keyValue() ([]byte, []byte, uint32) {  // 取出栈顶叶子结点元素的key、value
 	ref := &c.stack[len(c.stack)-1]
 
 	// If the cursor is pointing to the end of page/node then return nil.
@@ -374,9 +374,9 @@ func (c *Cursor) node() *node {
 
 // elemRef represents a reference to an element on a given page/node.
 type elemRef struct {
-	page  *page
-	node  *node
-	index int
+	page  *page  // 表示当前元素所在的页
+	node  *node  // 表示当前元素所在的节点
+	index int  // 表示节点中元素的索引
 }
 
 // isLeaf returns whether the ref is pointing at a leaf page/node.
@@ -388,7 +388,7 @@ func (r *elemRef) isLeaf() bool {
 }
 
 // count returns the number of inodes or page elements.
-func (r *elemRef) count() int {
+func (r *elemRef) count() int {  // 返回元素（key、value健值对）所处节点中的总的元素个数
 	if r.node != nil {
 		return len(r.node.inodes)
 	}

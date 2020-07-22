@@ -124,7 +124,7 @@ type DB struct {
 	openFile func(string, int, os.FileMode) (*os.File, error)
 	file     *os.File
 	dataref  []byte // mmap'ed readonly, write throws SEGV
-	data     *[maxMapSize]byte
+	data     *[maxMapSize]byte  // 存放所有页真实数据
 	datasz   int
 	filesz   int // current on disk file size
 	meta0    *meta
@@ -132,10 +132,10 @@ type DB struct {
 	pageSize int
 	opened   bool
 	rwtx     *Tx
-	txs      []*Tx
+	txs      []*Tx  // 保存正在执行的所有事务
 	stats    Stats
 
-	freelist     *freelist
+	freelist     *freelist  // 页分配器，用来分配空闲页
 	freelistLoad sync.Once
 
 	pagePool sync.Pool
@@ -256,9 +256,9 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 		// are out of luck and cannot access the database.
 		//
 		// TODO: scan for next page
-		if bw, err := db.file.ReadAt(buf[:], 0); err == nil && bw == len(buf) {
+		if bw, err := db.file.ReadAt(buf[:], 0); err == nil && bw == len(buf) {  // 读出db文件一开始的meta数据
 			if m := db.pageInBuffer(buf[:], 0).meta(); m.validate() == nil {
-				db.pageSize = int(m.pageSize)
+				db.pageSize = int(m.pageSize)  // 读出页大小
 			}
 		} else {
 			_ = db.close()
@@ -274,7 +274,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 	}
 
 	// Memory map the data file.
-	if err := db.mmap(options.InitialMmapSize); err != nil {
+	if err := db.mmap(options.InitialMmapSize); err != nil {  // 将磁盘文件映射到进程的虚拟内存空间，使进程可以直接通过指针操作文件内容
 		_ = db.close()
 		return nil, err
 	}
@@ -283,7 +283,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 		return db, nil
 	}
 
-	db.loadFreelist()
+	db.loadFreelist()  // 将空闲的page都读取出来
 
 	// Flush freelist when transitioning from no sync to sync so
 	// NoFreelistSync unaware boltdb can open the db later.
@@ -564,7 +564,7 @@ func (db *DB) beginTx() (*Tx, error) {
 
 	// Create a transaction associated with the database.
 	t := &Tx{}
-	t.init(db)
+	t.init(db)  // 将meta信息复制过来，根bucket也链接过来
 
 	// Keep track of transaction until it closes.
 	db.txs = append(db.txs, t)
@@ -881,7 +881,7 @@ func (db *DB) Info() *Info {
 }
 
 // page retrieves a page reference from the mmap based on the current page size.
-func (db *DB) page(id pgid) *page {
+func (db *DB) page(id pgid) *page {  // 根据页id从磁盘中读出page结构
 	pos := id * pgid(db.pageSize)
 	return (*page)(unsafe.Pointer(&db.data[pos]))
 }
@@ -892,7 +892,7 @@ func (db *DB) pageInBuffer(b []byte, id pgid) *page {
 }
 
 // meta retrieves the current meta page reference.
-func (db *DB) meta() *meta {
+func (db *DB) meta() *meta {  // 两个meta中，返回txid更大的
 	// We have to return the meta with the highest txid which doesn't fail
 	// validation. Otherwise, we can cause errors when in fact the database is
 	// in a consistent state. metaA is the one with the higher txid.
@@ -983,7 +983,7 @@ func (db *DB) IsReadOnly() bool {
 	return db.readOnly
 }
 
-func (db *DB) freepages() []pgid {
+func (db *DB) freepages() []pgid {  // 通过扫描所有bucket，得到所有空闲的页的id
 	tx, err := db.beginTx()
 	defer func() {
 		err = tx.Rollback()
@@ -995,7 +995,7 @@ func (db *DB) freepages() []pgid {
 		panic("freepages: failed to open read only tx")
 	}
 
-	reachable := make(map[pgid]*page)
+	reachable := make(map[pgid]*page)  // 已经使用的所有页
 	nofreed := make(map[pgid]bool)
 	ech := make(chan error)
 	go func() {
@@ -1003,11 +1003,11 @@ func (db *DB) freepages() []pgid {
 			panic(fmt.Sprintf("freepages: failed to get all reachable pages (%v)", e))
 		}
 	}()
-	tx.checkBucket(&tx.root, reachable, nofreed, ech)
+	tx.checkBucket(&tx.root, reachable, nofreed, ech)  // 遍历tx下所有bucket，也就是数据库中所有bucket，遍历到的page id都放入reachable
 	close(ech)
 
-	var fids []pgid
-	for i := pgid(2); i < db.meta().pgid; i++ {
+	var fids []pgid  // 空闲的页
+	for i := pgid(2); i < db.meta().pgid; i++ {  // 排除已经使用的页，剩下的就是空闲的页
 		if _, ok := reachable[i]; !ok {
 			fids = append(fids, i)
 		}
@@ -1114,12 +1114,12 @@ type Info struct {
 type meta struct {
 	magic    uint32
 	version  uint32
-	pageSize uint32
+	pageSize uint32  // 页大小
 	flags    uint32
-	root     bucket
-	freelist pgid
-	pgid     pgid
-	txid     txid
+	root     bucket  // 表示整个数据库的根bucket
+	freelist pgid  // freelist数据所在的页id
+	pgid     pgid  // 表示最新页的页id，递增的
+	txid     txid  // 保存了最大的已提交的写事务id
 	checksum uint64
 }
 

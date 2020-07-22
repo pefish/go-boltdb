@@ -27,7 +27,7 @@ type Tx struct {
 	db             *DB
 	meta           *meta
 	root           Bucket
-	pages          map[pgid]*page
+	pages          map[pgid]*page  // 存放所有脏页
 	stats          TxStats
 	commitHandlers []func()
 
@@ -47,12 +47,12 @@ func (tx *Tx) init(db *DB) {
 
 	// Copy the meta page since it can be changed by the writer.
 	tx.meta = &meta{}
-	db.meta().copy(tx.meta)
+	db.meta().copy(tx.meta)  // db的meta信息复制给tx
 
 	// Copy over the root bucket.
 	tx.root = newBucket(tx)
 	tx.root.bucket = &bucket{}
-	*tx.root.bucket = tx.meta.root
+	*tx.root.bucket = tx.meta.root  // 根bucket链接过来
 
 	// Increment the transaction id and add a page cache for writable transactions.
 	if tx.writable {
@@ -124,7 +124,7 @@ func (tx *Tx) DeleteBucket(name []byte) error {
 // ForEach executes a function for each bucket in the root.
 // If the provided function returns an error then the iteration is stopped and
 // the error is returned to the caller.
-func (tx *Tx) ForEach(fn func(name []byte, b *Bucket) error) error {
+func (tx *Tx) ForEach(fn func(name []byte, b *Bucket) error) error {  // 遍历根bucket中的key（子bucket名称）、value（子bucket）
 	return tx.root.ForEach(func(k, v []byte) error {
 		return fn(k, tx.root.Bucket(k))
 	})
@@ -462,7 +462,7 @@ func (tx *Tx) checkBucket(b *Bucket, reachable map[pgid]*page, freed map[pgid]bo
 	}
 
 	// Check every page used by this bucket.
-	b.tx.forEachPage(b.root, 0, func(p *page, _ int) {
+	b.tx.forEachPage(b.root, 0, func(p *page, _ int) {  // 遍历整棵树
 		if p.id > tx.meta.pgid {
 			ch <- fmt.Errorf("page %d: out of bounds: %d", int(p.id), int(b.tx.meta.pgid))
 		}

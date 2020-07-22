@@ -10,14 +10,14 @@ import (
 // node represents an in-memory, deserialized page.
 type node struct {
 	bucket     *Bucket
-	isLeaf     bool
+	isLeaf     bool   // 是否叶子结点
 	unbalanced bool
 	spilled    bool
 	key        []byte
-	pgid       pgid
-	parent     *node
-	children   nodes
-	inodes     inodes
+	pgid       pgid  // 该节点所在的页id
+	parent     *node  // 父节点
+	children   nodes  // 子节点
+	inodes     inodes  // 该节点的内部节点（其实就是节点中的数据，即健值对）
 }
 
 // root returns the top-level node this node is attached to.
@@ -593,10 +593,10 @@ func (s nodes) Less(i, j int) bool {
 // It can be used to point to elements in a page or point
 // to an element which hasn't been added to a page yet.
 type inode struct {
-	flags uint32
-	pgid  pgid
-	key   []byte
-	value []byte
+	flags uint32  // 用于 leaf node，区分是正常 value 还是 subbucket
+	pgid  pgid  // 用于 branch node, 是子节点的 page id
+	key   []byte  // 叶子结点元素的key
+	value []byte  // 叶子结点元素的值
 }
 
 type inodes []inode
